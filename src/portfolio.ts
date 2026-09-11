@@ -1,0 +1,102 @@
+export type TransactionType = 'buy' | 'sell' | 'dividend' | 'fee' | 'deposit' | 'withdrawal'
+
+export type Transaction = {
+  id: number
+  type: TransactionType
+  symbol: string
+  date: string
+  shares: number
+  amount: number
+  price: number
+  fees: number
+}
+
+export type Holding = {
+  symbol: string
+  shares: number
+  averageCost: number
+  marketValue: number
+  unrealized: number
+}
+
+export const prices: Record<string, number> = {
+  NVDA: 118.2,
+  AAPL: 195.64,
+  MSFT: 441.12,
+  AMZN: 202.18,
+  TSLA: 248.98,
+  GOOGL: 176.21,
+  V: 346.15,
+}
+
+export function calculateHoldings(transactions: Transaction[]): Holding[] {
+  const values = new Map<string, { shares: number; cost: number }>()
+
+  transactions.forEach((transaction) => {
+    if (!['buy', 'sell'].includes(transaction.type)) return
+
+    const value = values.get(transaction.symbol) ?? { shares: 0, cost: 0 }
+    if (transaction.type === 'buy') {
+      value.shares += transaction.shares
+      value.cost += transaction.shares * transaction.price + transaction.fees
+    } else {
+      const average = value.shares ? value.cost / value.shares : 0
+      value.shares -= transaction.shares
+      value.cost -= average * transaction.shares
+    }
+    values.set(transaction.symbol, value)
+  })
+
+  return [...values.entries()]
+    .filter(([, value]) => value.shares > 0.000001)
+    .map(([symbol, value]) => {
+      const marketValue = value.shares * (prices[symbol] ?? 0)
+      return {
+        symbol,
+        shares: value.shares,
+        averageCost: value.cost / value.shares,
+        marketValue,
+        unrealized: marketValue - value.cost,
+      }
+    })
+}
+
+export function calculateReturns(transactions: Transaction[]) {
+  const holdings = calculateHoldings(transactions)
+  let realized = 0
+  let dividends = 0
+  let fees = 0
+  let explicitFees = 0
+  const lots = new Map<string, { shares: number; cost: number }>()
+
+  transactions.forEach((transaction) => {
+    fees += transaction.fees
+    if (transaction.type === 'dividend') dividends += transaction.amount
+    if (transaction.type === 'fee') explicitFees += transaction.amount
+    if (transaction.type === 'buy') {
+      const lot = lots.get(transaction.symbol) ?? { shares: 0, cost: 0 }
+      lot.shares += transaction.shares
+      lot.cost += transaction.shares * transaction.price + transaction.fees
+      lots.set(transaction.symbol, lot)
+    }
+    if (transaction.type === 'sell') {
+      const lot = lots.get(transaction.symbol) ?? { shares: 0, cost: 0 }
+      const average = lot.shares ? lot.cost / lot.shares : 0
+      realized += transaction.shares * transaction.price - transaction.shares * average - transaction.fees
+      lot.shares -= transaction.shares
+      lot.cost -= transaction.shares * average
+      lots.set(transaction.symbol, lot)
+    }
+  })
+
+  const unrealized = holdings.reduce((sum, holding) => sum + holding.unrealized, 0)
+  return {
+    holdings,
+    marketValue: holdings.reduce((sum, holding) => sum + holding.marketValue, 0),
+    realized,
+    unrealized,
+    dividends,
+    fees,
+    totalReturn: realized + unrealized + dividends - explicitFees,
+  }
+}
