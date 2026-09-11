@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { ChangeEvent, FormEvent } from 'react'
 import { calculateReturns, parseTransactions, serializeTransactions, validateTransaction } from './portfolio'
 import type { Transaction, TransactionType } from './portfolio'
@@ -77,6 +77,10 @@ function App() {
     return saved ? JSON.parse(saved) : initialTransactions
   })
   const [isModalOpen, setIsModalOpen] = useState(false)
+  const [transactionToDelete, setTransactionToDelete] = useState<Transaction | null>(null)
+  const addTransactionButtonRef = useRef<HTMLButtonElement>(null)
+  const transactionTypeRef = useRef<HTMLSelectElement>(null)
+  const deleteCancelRef = useRef<HTMLButtonElement>(null)
   const [activeNav, setActiveNav] = useState('Overview')
   const [errors, setErrors] = useState<string[]>([])
   const [watchlist, setWatchlist] = useState<string[]>(() => {
@@ -85,6 +89,29 @@ function App() {
   })
   const [watchlistInput, setWatchlistInput] = useState('')
   const [backupError, setBackupError] = useState('')
+  const closeTransactionModal = () => {
+    setIsModalOpen(false)
+    setErrors([])
+    addTransactionButtonRef.current?.focus()
+  }
+  const closeDeleteDialog = () => {
+    setTransactionToDelete(null)
+    deleteCancelRef.current?.focus()
+  }
+  useEffect(() => {
+    if (!isModalOpen) return
+    transactionTypeRef.current?.focus()
+    const handleKeyDown = (event: KeyboardEvent) => { if (event.key === 'Escape') closeTransactionModal() }
+    document.addEventListener('keydown', handleKeyDown)
+    return () => document.removeEventListener('keydown', handleKeyDown)
+  }, [isModalOpen])
+  useEffect(() => {
+    if (!transactionToDelete) return
+    deleteCancelRef.current?.focus()
+    const handleKeyDown = (event: KeyboardEvent) => { if (event.key === 'Escape') closeDeleteDialog() }
+    document.addEventListener('keydown', handleKeyDown)
+    return () => document.removeEventListener('keydown', handleKeyDown)
+  }, [transactionToDelete])
   useEffect(() => {
     if (!isSupabaseConfigured || !session) return
     let active = true
@@ -155,16 +182,16 @@ function App() {
       setTransactions((current) => [...current, result.data])
     } else setTransactions((current) => [...current, transaction])
     setErrors([])
-    setIsModalOpen(false)
+    closeTransactionModal()
   }
 
   const removeTransaction = async (id: number) => {
-    if (!window.confirm('Delete this transaction? This cannot be undone.')) return
     if (session && workspaceId) {
       const result = await deleteWorkspaceTransaction(workspaceId, id)
       if (result.error) { setDataError(`Could not delete transaction: ${result.error.message}`); return }
     }
     setTransactions((current) => current.filter((transaction) => transaction.id !== id))
+    closeDeleteDialog()
   }
 
   const addWatchlistSymbol = async (event: FormEvent<HTMLFormElement>) => {
@@ -196,13 +223,13 @@ function App() {
       <aside className="sidebar" aria-label="Primary navigation">
         <div className="brand"><span className="brand-mark">R</span><span>returns<span className="brand-accent">/</span>cockpit</span></div>
         <div className="workspace-label">WORKSPACE</div>
-        <nav>{['Overview', 'Portfolio', 'Watchlist', 'Activity'].map((item) => <button className={activeNav === item ? 'nav-item active' : 'nav-item'} type="button" key={item} onClick={() => setActiveNav(item)}><span className="nav-icon">Gùê</span>{item}</button>)}</nav>
+        <nav>{['Overview', 'Portfolio', 'Watchlist', 'Activity'].map((item) => <button className={activeNav === item ? 'nav-item active' : 'nav-item'} type="button" key={item} onClick={() => setActiveNav(item)}><span className="nav-icon" aria-hidden="true">{item[0]}</span>{item}</button>)}</nav>
       </aside>
       <main className="main-content">
-        <header className="topbar"><div className="mobile-brand">returns<span>/</span>cockpit</div><div className="breadcrumb">Workspace <span>/</span> {activeNav}</div><div className="top-actions"><span className="live-dot">{isSupabaseConfigured ? 'Signed in' : 'Local demo'}</span>{session && <><span className="account-email">{session.user.email}</span><button className="secondary-button sign-out-button" type="button" onClick={handleSignOut}>Sign out</button></> }<button className="icon-button" aria-label="Notifications" type="button">GÖó</button><button className="avatar avatar-small" aria-label="Open profile menu" type="button">JM</button></div></header>
+        <header className="topbar"><div className="mobile-brand">returns<span>/</span>cockpit</div><div className="breadcrumb">Workspace <span>/</span> {activeNav}</div><div className="top-actions"><span className="workspace-status">{isSupabaseConfigured ? 'Signed in workspace' : 'Local demo workspace'}</span>{session && <><span className="account-email">{session.user.email}</span><button className="secondary-button sign-out-button" type="button" onClick={handleSignOut}>Sign out</button></> }<button className="icon-button" aria-label="Notifications" type="button">!</button><button className="avatar avatar-small" aria-label="Open profile menu" type="button">JM</button></div></header>
         {(authError || dataError) && <p className="auth-inline-error" role="alert">{authError || dataError}</p>}
         <div className={`page-content view-${activeNav.toLowerCase()}`}>
-          <section className="page-heading"><div><p className="eyebrow">{new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })} <span className="market-status">GùÅ Sample data</span></p><h1>Good morning, Jordan.</h1><p className="muted">Here is your portfolio at a glance.</p><p className="price-note">Prices are demo/static values, as of {asOf}.</p></div><button className="primary-button" type="button" onClick={() => { setErrors([]); setIsModalOpen(true) }}><span>+</span> Add transaction</button></section>
+          <section className="page-heading"><div><p className="eyebrow">{new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })} <span className="market-status">Demo prices | sample data</span></p><h1>Good morning, Jordan.</h1><p className="muted">Here is your portfolio at a glance.</p><p className="price-note">Prices are demo values from the local sample provider, as of {asOf}.</p></div><button ref={addTransactionButtonRef} className="primary-button" type="button" onClick={() => { setErrors([]); setIsModalOpen(true) }}><span aria-hidden="true">+</span> Add transaction</button></section>
           {activeNav === 'Overview' && <section className="metric-grid" aria-label="Portfolio summary"><article className="metric-card featured"><p>Portfolio value <span className="trend">Gåù</span></p><strong>{money(summary.marketValue)}</strong><span className="metric-foot positive-text">{signedMoney(summary.totalReturn)} <small>total return</small></span></article><article className="metric-card"><p>Total return</p><strong className="teal-text">{signedMoney(summary.totalReturn)}</strong><span className="metric-foot">Realized + unrealized + dividends</span></article><article className="metric-card"><p>Unrealized P/L</p><strong>{signedMoney(summary.unrealized)}</strong><span className="metric-foot">Across open positions</span></article><article className="metric-card"><p>Realized P/L</p><strong>{signedMoney(summary.realized)}</strong><span className="metric-foot">Closed positions</span></article></section>}
           {activeNav === 'Overview' && <>
           <section className="panel insight-panel"><div className="panel-heading"><div><p className="eyebrow">EDUCATIONAL VIEW</p><h2>Portfolio insights</h2></div><span className="panel-note">Observations, not recommendations</span></div><div className="insight-grid">{insights.map((insight) => <article className={`insight-card ${insight.severity}`} key={`${insight.category}-${insight.title}`}><span className="insight-label">{insight.category}</span><strong>{insight.title}</strong><p>{insight.explanation}</p><small>{insight.input}: {insight.category === 'concentration' ? `${(insight.value * 100).toFixed(1)}%` : money(insight.value)}</small></article>)}</div><div className="allocation-list"><strong>Allocation by current market value</strong>{allocation.map((item) => <div className="allocation-row" key={item.symbol}><span><i style={{ background: colors[item.symbol] || '#7fc2ae' }} />{item.symbol}</span><span>{(item.percentage * 100).toFixed(1)}% -+ {money(item.marketValue)}</span></div>)}</div></section>

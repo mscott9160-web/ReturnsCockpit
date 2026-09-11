@@ -1,5 +1,9 @@
 # Returns Cockpit
 
+Design brief: [Maya Chen design review](.github/design/maya-design-review.md).
+
+The chosen product name is **Returns Cockpit**, with the descriptor "Understand your portfolio with clarity." The visual direction keeps the deep navy, teal, coral, gold, and soft green-gray palette, with Georgia headings and a clean sans-serif for interface text.
+
 Returns Cockpit is a trustworthy portfolio-understanding tool. It records manual transactions and explains portfolio value and returns using clearly labeled demo/static prices. It does not execute trades or make guaranteed recommendations.
 
 ## Current milestone
