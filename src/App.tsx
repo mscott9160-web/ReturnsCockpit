@@ -4,6 +4,9 @@ import { calculateReturns, parseTransactions, serializeTransactions, validateTra
 import type { Transaction, TransactionType } from './portfolio'
 import { getDemoPriceSnapshots } from './marketData'
 import { buildInsights, calculateAllocation } from './insights'
+import { getCurrentSession, signInWithEmail, signOut, signUpWithEmail } from './auth'
+import { isSupabaseConfigured, supabase } from './supabase'
+import type { Session } from '@supabase/supabase-js'
 import './App.css'
 
 const names: Record<string, string> = { NVDA: 'NVIDIA Corporation', AAPL: 'Apple Inc.', MSFT: 'Microsoft Corporation', AMZN: 'Amazon.com Inc.' }
@@ -22,7 +25,49 @@ const money = (value: number) => `${value < 0 ? '-' : ''}$${Math.abs(value).toLo
 const signedMoney = (value: number) => `${value >= 0 ? '+' : '-'}${money(Math.abs(value))}`
 const dateLabel = (date: string) => new Date(`${date}T12:00:00`).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
 
+function AuthScreen({ initialError = '' }: { initialError?: string }) {
+  const [mode, setMode] = useState<'sign-in' | 'sign-up'>('sign-in')
+  const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
+  const [status, setStatus] = useState<{ type: 'error' | 'success'; message: string } | null>(initialError ? { type: 'error', message: initialError } : null)
+  const [isSubmitting, setIsSubmitting] = useState(false)
+
+  const submit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    setStatus(null)
+    setIsSubmitting(true)
+    const result = mode === 'sign-in' ? await signInWithEmail(email, password) : await signUpWithEmail(email, password)
+    setIsSubmitting(false)
+    if (result.error) {
+      setStatus({ type: 'error', message: result.error.message })
+      return
+    }
+    if (mode === 'sign-up' && !result.data.session) setStatus({ type: 'success', message: 'Account created. Check your email to confirm your account.' })
+  }
+
+  return <main className="auth-shell"><section className="auth-card" aria-labelledby="auth-title"><div className="brand auth-brand"><span className="brand-mark">R</span><span>returns<span className="brand-accent">/</span>cockpit</span></div><p className="eyebrow">YOUR PORTFOLIO, CLEARLY</p><h1 id="auth-title">{mode === 'sign-in' ? 'Welcome back.' : 'Create your account.'}</h1><p className="auth-copy">{mode === 'sign-in' ? 'Sign in to continue to your returns cockpit.' : 'Start keeping a clear view of your portfolio.'}</p><div className="auth-toggle" role="group" aria-label="Authentication mode"><button type="button" className={mode === 'sign-in' ? 'active' : ''} onClick={() => { setMode('sign-in'); setStatus(null) }}>Sign in</button><button type="button" className={mode === 'sign-up' ? 'active' : ''} onClick={() => { setMode('sign-up'); setStatus(null) }}>Sign up</button></div><form className="auth-form" onSubmit={submit}><label>Email<input type="email" value={email} onChange={(event) => setEmail(event.target.value)} autoComplete="email" required /></label><label>Password<input type="password" value={password} onChange={(event) => setPassword(event.target.value)} autoComplete={mode === 'sign-in' ? 'current-password' : 'new-password'} minLength={6} required /></label>{status && <p className={`auth-status ${status.type}`} role={status.type === 'error' ? 'alert' : 'status'}>{status.message}</p>}<button className="primary-button auth-submit" type="submit" disabled={isSubmitting}>{isSubmitting ? 'Working...' : mode === 'sign-in' ? 'Sign in' : 'Create account'}</button></form></section></main>
+}
+
 function App() {
+  const [session, setSession] = useState<Session | null>(null)
+  const [authLoading, setAuthLoading] = useState(isSupabaseConfigured)
+  const [authError, setAuthError] = useState('')
+
+  useEffect(() => {
+    if (!isSupabaseConfigured || !supabase) return
+    let mounted = true
+    getCurrentSession().then((result) => {
+      if (!mounted) return
+      setSession(result.data.session)
+      if (result.error) setAuthError(result.error.message)
+      setAuthLoading(false)
+    })
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, nextSession) => {
+      if (mounted) setSession(nextSession)
+    })
+    return () => { mounted = false; subscription.unsubscribe() }
+  }, [])
+
   const [transactions, setTransactions] = useState<Transaction[]>(() => {
     const saved = localStorage.getItem(storageKey)
     return saved ? JSON.parse(saved) : initialTransactions
@@ -91,7 +136,15 @@ function App() {
     setWatchlistInput('')
   }
 
+  const handleSignOut = async () => {
+    const result = await signOut()
+    if (result.error) setAuthError(result.error.message)
+  }
+
   const asOf = priceSnapshots.AAPL.asOf ? new Date(priceSnapshots.AAPL.asOf).toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short' }) : 'unknown'
+
+  if (isSupabaseConfigured && authLoading) return <main className="auth-shell"><div className="auth-loading" role="status">Checking your session...</div></main>
+  if (isSupabaseConfigured && !session) return <AuthScreen initialError={authError} />
 
   return (
     <div className="app-shell">
@@ -101,7 +154,8 @@ function App() {
         <nav>{['Overview', 'Portfolio', 'Watchlist', 'Activity'].map((item) => <button className={activeNav === item ? 'nav-item active' : 'nav-item'} type="button" key={item} onClick={() => setActiveNav(item)}><span className="nav-icon">Gùê</span>{item}</button>)}</nav>
       </aside>
       <main className="main-content">
-        <header className="topbar"><div className="mobile-brand">returns<span>/</span>cockpit</div><div className="breadcrumb">Workspace <span>/</span> {activeNav}</div><div className="top-actions"><span className="live-dot">GùÅ Demo prices</span><button className="icon-button" aria-label="Notifications" type="button">GÖó</button><button className="avatar avatar-small" aria-label="Open profile menu" type="button">JM</button></div></header>
+        <header className="topbar"><div className="mobile-brand">returns<span>/</span>cockpit</div><div className="breadcrumb">Workspace <span>/</span> {activeNav}</div><div className="top-actions"><span className="live-dot">{isSupabaseConfigured ? 'Signed in' : 'Local demo'}</span>{session && <><span className="account-email">{session.user.email}</span><button className="secondary-button sign-out-button" type="button" onClick={handleSignOut}>Sign out</button></> }<button className="icon-button" aria-label="Notifications" type="button">GÖó</button><button className="avatar avatar-small" aria-label="Open profile menu" type="button">JM</button></div></header>
+        {authError && <p className="auth-inline-error" role="alert">{authError}</p>}
         <div className={`page-content view-${activeNav.toLowerCase()}`}>
           <section className="page-heading"><div><p className="eyebrow">{new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })} <span className="market-status">GùÅ Sample data</span></p><h1>Good morning, Jordan.</h1><p className="muted">Here is your portfolio at a glance.</p><p className="price-note">Prices are demo/static values, as of {asOf}.</p></div><button className="primary-button" type="button" onClick={() => { setErrors([]); setIsModalOpen(true) }}><span>+</span> Add transaction</button></section>
           {activeNav === 'Overview' && <section className="metric-grid" aria-label="Portfolio summary"><article className="metric-card featured"><p>Portfolio value <span className="trend">Gåù</span></p><strong>{money(summary.marketValue)}</strong><span className="metric-foot positive-text">{signedMoney(summary.totalReturn)} <small>total return</small></span></article><article className="metric-card"><p>Total return</p><strong className="teal-text">{signedMoney(summary.totalReturn)}</strong><span className="metric-foot">Realized + unrealized + dividends</span></article><article className="metric-card"><p>Unrealized P/L</p><strong>{signedMoney(summary.unrealized)}</strong><span className="metric-foot">Across open positions</span></article><article className="metric-card"><p>Realized P/L</p><strong>{signedMoney(summary.realized)}</strong><span className="metric-foot">Closed positions</span></article></section>}
