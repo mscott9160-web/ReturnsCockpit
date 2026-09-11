@@ -110,3 +110,23 @@ export async function saveWatchlistSymbols(workspaceId: string, symbols: string[
   }
   return { data: normalized, error: null }
 }
+
+export async function addWorkspaceTransaction(workspaceId: string, transaction: Transaction): Promise<WorkspaceResult<Transaction>> {
+  const user = await currentUser()
+  if (user.error) return { data: null as never, error: user.error }
+  const result = await configuredClient()!.from('transactions').insert(transactionToRow(transaction, workspaceId, user.data.id)).select('id,type,symbol,transaction_date,shares,amount,price,fees').single()
+  if (result.error) return { data: null as never, error: result.error }
+  return { data: transactionRowToTransaction(result.data as TransactionRow), error: null }
+}
+
+export async function deleteWorkspaceTransaction(workspaceId: string, transactionId: number): Promise<WorkspaceResult<null>> {
+  const user = await currentUser()
+  if (user.error) return { data: null, error: user.error }
+  const client = configuredClient()!
+  const result = await client.from('transactions').select('id,type,symbol,transaction_date,shares,amount,price,fees').eq('workspace_id', workspaceId).eq('user_id', user.data.id)
+  if (result.error) return { data: null, error: result.error }
+  const row = (result.data as TransactionRow[]).find((candidate) => transactionRowToTransaction(candidate).id === transactionId)
+  if (!row) return { data: null, error: new Error('Could not find that remote transaction.') }
+  const deleted = await client.from('transactions').delete().eq('id', row.id).eq('workspace_id', workspaceId).eq('user_id', user.data.id)
+  return deleted.error ? { data: null, error: deleted.error } : { data: null, error: null }
+}

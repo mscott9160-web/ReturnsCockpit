@@ -6,6 +6,7 @@ import { getDemoPriceSnapshots } from './marketData'
 import { buildInsights, calculateAllocation } from './insights'
 import { getCurrentSession, signInWithEmail, signOut, signUpWithEmail } from './auth'
 import { isSupabaseConfigured, supabase } from './supabase'
+import { addWorkspaceTransaction, deleteWorkspaceTransaction, findOrCreatePersonalWorkspace, loadWatchlistSymbols, loadWorkspaceTransactions, saveWatchlistSymbols } from './workspaceData'
 import type { Session } from '@supabase/supabase-js'
 import './App.css'
 
@@ -52,6 +53,9 @@ function App() {
   const [session, setSession] = useState<Session | null>(null)
   const [authLoading, setAuthLoading] = useState(isSupabaseConfigured)
   const [authError, setAuthError] = useState('')
+  const [workspaceId, setWorkspaceId] = useState<string | null>(null)
+  const [dataLoading, setDataLoading] = useState(false)
+  const [dataError, setDataError] = useState('')
 
   useEffect(() => {
     if (!isSupabaseConfigured || !supabase) return
@@ -81,6 +85,31 @@ function App() {
   })
   const [watchlistInput, setWatchlistInput] = useState('')
   const [backupError, setBackupError] = useState('')
+  useEffect(() => {
+    if (!isSupabaseConfigured || !session) return
+    let active = true
+    findOrCreatePersonalWorkspace().then(async (workspaceResult) => {
+      if (!active) return
+      setDataLoading(true)
+      if (workspaceResult.error || !workspaceResult.data) {
+        setDataError(workspaceResult.error?.message || 'Could not open your workspace.')
+        setDataLoading(false)
+        return
+      }
+      const [transactionsResult, watchlistResult] = await Promise.all([loadWorkspaceTransactions(workspaceResult.data.id), loadWatchlistSymbols(workspaceResult.data.id)])
+      if (!active) return
+      if (transactionsResult.error || watchlistResult.error) {
+        setDataError(transactionsResult.error?.message || watchlistResult.error?.message || 'Could not load your workspace data.')
+        setDataLoading(false)
+        return
+      }
+      setWorkspaceId(workspaceResult.data.id)
+      setTransactions(transactionsResult.data)
+      setWatchlist(watchlistResult.data)
+      setDataLoading(false)
+    })
+    return () => { active = false }
+  }, [session])
   const priceSnapshots = getDemoPriceSnapshots()
   const summary = calculateReturns(transactions, priceSnapshots)
   const allocation = calculateAllocation(summary.holdings)
@@ -112,27 +141,42 @@ function App() {
     }
   }
 
-  const addTransaction = (event: FormEvent<HTMLFormElement>) => {
+  const addTransaction = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     const form = new FormData(event.currentTarget)
     const type = String(form.get('type')) as TransactionType
     const draft = { type, symbol: String(form.get('symbol') || '').trim().toUpperCase(), date: String(form.get('date') || ''), shares: Number(form.get('shares') || 0), amount: Number(form.get('amount') || 0), price: Number(form.get('price') || 0), fees: Number(form.get('fees') || 0) }
     const nextErrors = validateTransaction(draft, transactions)
     if (nextErrors.length) { setErrors(nextErrors); return }
-    setTransactions((current) => [...current, { id: Date.now(), ...draft, amount: draft.amount || draft.shares * draft.price }])
+    const transaction = { id: Date.now(), ...draft, amount: draft.amount || draft.shares * draft.price }
+    if (session && workspaceId) {
+      const result = await addWorkspaceTransaction(workspaceId, transaction)
+      if (result.error) { setDataError(`Could not save transaction: ${result.error.message}`); return }
+      setTransactions((current) => [...current, result.data])
+    } else setTransactions((current) => [...current, transaction])
     setErrors([])
     setIsModalOpen(false)
   }
 
-  const removeTransaction = (id: number) => {
-    if (window.confirm('Delete this transaction? This cannot be undone.')) setTransactions((current) => current.filter((transaction) => transaction.id !== id))
+  const removeTransaction = async (id: number) => {
+    if (!window.confirm('Delete this transaction? This cannot be undone.')) return
+    if (session && workspaceId) {
+      const result = await deleteWorkspaceTransaction(workspaceId, id)
+      if (result.error) { setDataError(`Could not delete transaction: ${result.error.message}`); return }
+    }
+    setTransactions((current) => current.filter((transaction) => transaction.id !== id))
   }
 
-  const addWatchlistSymbol = (event: FormEvent<HTMLFormElement>) => {
+  const addWatchlistSymbol = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     const symbol = watchlistInput.trim().toUpperCase()
     if (!symbol || watchlist.includes(symbol)) return
-    setWatchlist((current) => [...current, symbol])
+    const next = [...watchlist, symbol]
+    if (session && workspaceId) {
+      const result = await saveWatchlistSymbols(workspaceId, next)
+      if (result.error) { setDataError(`Could not save watchlist: ${result.error.message}`); return }
+    }
+    setWatchlist(next)
     setWatchlistInput('')
   }
 
@@ -145,6 +189,7 @@ function App() {
 
   if (isSupabaseConfigured && authLoading) return <main className="auth-shell"><div className="auth-loading" role="status">Checking your session...</div></main>
   if (isSupabaseConfigured && !session) return <AuthScreen initialError={authError} />
+  if (isSupabaseConfigured && dataLoading) return <main className="auth-shell"><div className="auth-loading" role="status">Loading your workspace...</div></main>
 
   return (
     <div className="app-shell">
@@ -155,7 +200,7 @@ function App() {
       </aside>
       <main className="main-content">
         <header className="topbar"><div className="mobile-brand">returns<span>/</span>cockpit</div><div className="breadcrumb">Workspace <span>/</span> {activeNav}</div><div className="top-actions"><span className="live-dot">{isSupabaseConfigured ? 'Signed in' : 'Local demo'}</span>{session && <><span className="account-email">{session.user.email}</span><button className="secondary-button sign-out-button" type="button" onClick={handleSignOut}>Sign out</button></> }<button className="icon-button" aria-label="Notifications" type="button">GÖó</button><button className="avatar avatar-small" aria-label="Open profile menu" type="button">JM</button></div></header>
-        {authError && <p className="auth-inline-error" role="alert">{authError}</p>}
+        {(authError || dataError) && <p className="auth-inline-error" role="alert">{authError || dataError}</p>}
         <div className={`page-content view-${activeNav.toLowerCase()}`}>
           <section className="page-heading"><div><p className="eyebrow">{new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })} <span className="market-status">GùÅ Sample data</span></p><h1>Good morning, Jordan.</h1><p className="muted">Here is your portfolio at a glance.</p><p className="price-note">Prices are demo/static values, as of {asOf}.</p></div><button className="primary-button" type="button" onClick={() => { setErrors([]); setIsModalOpen(true) }}><span>+</span> Add transaction</button></section>
           {activeNav === 'Overview' && <section className="metric-grid" aria-label="Portfolio summary"><article className="metric-card featured"><p>Portfolio value <span className="trend">Gåù</span></p><strong>{money(summary.marketValue)}</strong><span className="metric-foot positive-text">{signedMoney(summary.totalReturn)} <small>total return</small></span></article><article className="metric-card"><p>Total return</p><strong className="teal-text">{signedMoney(summary.totalReturn)}</strong><span className="metric-foot">Realized + unrealized + dividends</span></article><article className="metric-card"><p>Unrealized P/L</p><strong>{signedMoney(summary.unrealized)}</strong><span className="metric-foot">Across open positions</span></article><article className="metric-card"><p>Realized P/L</p><strong>{signedMoney(summary.realized)}</strong><span className="metric-foot">Closed positions</span></article></section>}
@@ -165,7 +210,7 @@ function App() {
           <section className="panel activity-panel"><div className="panel-heading"><div><p className="eyebrow">LEDGER</p><h2>Recent activity</h2></div><span className="panel-note">{transactions.length} transactions</span></div><div className="activity-list">{[...transactions].reverse().slice(0, 5).map((transaction) => <div className="activity-row" key={transaction.id}><span className="activity-icon">{transaction.type === 'buy' ? 'Gåù' : transaction.type === 'sell' ? 'Gåÿ' : '$'}</span><span><strong>{transaction.type[0].toUpperCase() + transaction.type.slice(1)} {transaction.symbol && `-+ ${transaction.symbol}`}</strong><small>{dateLabel(transaction.date)}</small></span><strong>{transaction.type === 'buy' || transaction.type === 'sell' ? `${transaction.shares} shares` : money(transaction.amount)}</strong><button className="delete-button" type="button" onClick={() => removeTransaction(transaction.id)} aria-label={`Delete ${transaction.type} transaction`}>+ù</button></div>)}</div></section>
           </>}
           {activeNav === 'Portfolio' && <section className="panel view-panel"><div className="panel-heading"><div><p className="eyebrow">PORTFOLIO</p><h2>Holdings and allocation</h2></div><span className="panel-note">{summary.holdings.length} positions</span></div><div className="allocation-list">{allocation.map((item) => <div className="allocation-row" key={item.symbol}><span><i style={{ background: colors[item.symbol] || '#7fc2ae' }} />{item.symbol} - {names[item.symbol] || 'Position'}</span><span>{(item.percentage * 100).toFixed(1)}% - {money(item.marketValue)}</span></div>)}</div><div className="table-wrap"><table><thead><tr><th>Symbol</th><th>Shares</th><th>Market value</th><th>Unrealized</th></tr></thead><tbody>{summary.holdings.map((holding) => <tr key={holding.symbol}><td><strong>{holding.symbol}</strong></td><td>{holding.shares.toLocaleString()}</td><td>{money(holding.marketValue)}</td><td className={holding.unrealized >= 0 ? 'positive-text' : 'negative-text'}>{signedMoney(holding.unrealized)}</td></tr>)}</tbody></table></div></section>}
-          {activeNav === 'Watchlist' && <section className="panel view-panel"><div className="panel-heading"><div><p className="eyebrow">WATCHLIST</p><h2>Symbols to watch</h2></div><span className="panel-note">{watchlist.length} symbols</span></div><form onSubmit={addWatchlistSymbol}><label>Ticker<input value={watchlistInput} onChange={(event) => setWatchlistInput(event.target.value)} placeholder="Add symbol" /></label><button className="primary-button" type="submit">Add to watchlist</button></form><div className="activity-list">{watchlist.map((symbol) => <div className="activity-row" key={symbol}><span className="stock-dot" style={{ background: colors[symbol] || '#7fc2ae' }}>{symbol.slice(0, 1)}</span><span><strong>{symbol}</strong><small>{names[symbol] || 'Market symbol'}</small></span><button className="delete-button" type="button" onClick={() => setWatchlist((current) => current.filter((item) => item !== symbol))} aria-label={`Remove ${symbol} from watchlist`}>+ù</button></div>)}</div></section>}
+          {activeNav === 'Watchlist' && <section className="panel view-panel"><div className="panel-heading"><div><p className="eyebrow">WATCHLIST</p><h2>Symbols to watch</h2></div><span className="panel-note">{watchlist.length} symbols</span></div><form onSubmit={addWatchlistSymbol}><label>Ticker<input value={watchlistInput} onChange={(event) => setWatchlistInput(event.target.value)} placeholder="Add symbol" /></label><button className="primary-button" type="submit">Add to watchlist</button></form><div className="activity-list">{watchlist.map((symbol) => <div className="activity-row" key={symbol}><span className="stock-dot" style={{ background: colors[symbol] || '#7fc2ae' }}>{symbol.slice(0, 1)}</span><span><strong>{symbol}</strong><small>{names[symbol] || 'Market symbol'}</small></span><button className="delete-button" type="button" onClick={async () => { const next = watchlist.filter((item) => item !== symbol); if (session && workspaceId) { const result = await saveWatchlistSymbols(workspaceId, next); if (result.error) { setDataError(`Could not save watchlist: ${result.error.message}`); return } } setWatchlist(next) }} aria-label={`Remove ${symbol} from watchlist`}>+ù</button></div>)}</div></section>}
           {activeNav === 'Activity' && <section className="panel view-panel"><div className="panel-heading"><div><p className="eyebrow">FULL LEDGER</p><h2>Transaction activity</h2></div><span className="panel-note">{transactions.length} transactions</span></div><div className="top-actions"><button className="secondary-button" type="button" onClick={exportLedger}>Export JSON</button><label className="secondary-button">Import JSON<input type="file" accept="application/json,.json" onChange={importLedger} hidden /></label></div>{backupError && <p className="muted" role="status">{backupError}</p>}<div className="activity-list">{[...transactions].reverse().map((transaction) => <div className="activity-row" key={transaction.id}><span className="activity-icon">{transaction.type === 'buy' ? 'Gåù' : transaction.type === 'sell' ? 'Gåÿ' : '$'}</span><span><strong>{transaction.type[0].toUpperCase() + transaction.type.slice(1)} {transaction.symbol && `-+ ${transaction.symbol}`}</strong><small>{dateLabel(transaction.date)}</small></span><strong>{transaction.type === 'buy' || transaction.type === 'sell' ? `${transaction.shares} shares` : money(transaction.amount)}</strong><button className="delete-button" type="button" onClick={() => removeTransaction(transaction.id)} aria-label={`Delete ${transaction.type} transaction`}>+ù</button></div>)}</div></section>}
         </div>
       </main>
