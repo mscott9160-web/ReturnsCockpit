@@ -28,6 +28,12 @@ The remaining sections describe the Vite starter configuration used by the proje
 
 The current provider is deliberately local and contains no API calls or credentials. A future live provider must protect API keys outside the browser, attribute the upstream source, preserve reliable timestamps, expose stale and outage states, respect rate limits, and confirm data licensing and redistribution rights before being enabled.
 
+## Educational insights boundary
+
+`src/insights.ts` calculates deterministic observations from the local portfolio holdings and demo price snapshots. Allocation is each holding's non-negative market value divided by total non-negative market value. A concentration observation is shown when one holding exceeds 35%. Return contribution observations report realized return, unrealized return, and dividends separately using the values already calculated by `src/portfolio.ts`. Empty portfolios and zero market value produce zero allocation percentages without throwing.
+
+These observations explain recorded portfolio behavior; they are not buy or sell recommendations, personalized investment advice, or promises of profit. Returns Cockpit does not guarantee profit or predict future performance.
+
 This template provides a minimal setup to get React working in Vite with HMR and some Oxlint rules.
 
 Currently, two official plugins are available:
