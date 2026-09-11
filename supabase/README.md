@@ -41,17 +41,17 @@ The next step is to connect authenticated app state to this module, replacing th
 
 `functions/market-data/index.ts` is the server-side provider boundary. It accepts `POST { "symbols": ["AAPL", "MSFT"] }`, handles CORS and `OPTIONS`, validates non-empty US-style tickers, and caps each request at 25 symbols. Provider credentials are read only from Supabase Edge Function secrets; they are never sent to the browser or Expo client.
 
-Deploy it only after selecting a provider and reviewing the provider's account, licensing, attribution, rate-limit, freshness, and redistribution requirements:
+The first provider adapter is Finnhub. Deploy it only after reviewing Finnhub account requirements, licensing, attribution, rate limits, freshness, and redistribution terms:
 
 ```sh
 supabase functions deploy market-data
-supabase secrets set MARKET_DATA_PROVIDER_URL=https://provider.example/quotes MARKET_DATA_API_KEY=replace-me
+supabase secrets set MARKET_DATA_PROVIDER=finnhub FINNHUB_API_KEY=replace-me FINNHUB_API_BASE_URL=https://finnhub.io/api/v1
 supabase secrets list
 ```
 
-The required secrets are `MARKET_DATA_PROVIDER_URL` (the selected provider endpoint) and `MARKET_DATA_API_KEY` (the provider credential). Keep both in Supabase secrets and never commit them.
+`FINNHUB_API_KEY` is required and must remain in Supabase Edge Function secrets. `FINNHUB_API_BASE_URL` is optional and defaults to `https://finnhub.io/api/v1`; `MARKET_DATA_PROVIDER` must be `finnhub`. Replace the `replace-me` placeholder locally and never commit the credential or put it in browser or Expo environment variables.
 
-The provider has not been selected yet, so the function does not claim compatibility with a specific vendor. Its small adapter documents the expected upstream shape as `{ data: [{ symbol, price, asOf? }] }` or an equivalent array. Update that adapter only after confirming the selected provider's response and terms.
+The function calls Finnhub `/quote?symbol=...&token=...` once per symbol with an eight-second timeout. It maps valid `c` and `t` fields to a `fresh` snapshot sourced as `Finnhub`, and maps missing, zero, malformed, HTTP-error, or timed-out quotes to `unavailable` while preserving other symbols. Finnhub plan rate limits and market-data licensing or redistribution restrictions still apply; confirm that the intended display use is permitted.
 
 ### Stable response contract
 

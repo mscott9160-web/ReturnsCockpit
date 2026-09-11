@@ -60,14 +60,16 @@ type LiveMarketDataResponse = {
 }
 ```
 
-Deploy after selecting a provider and confirming its API terms, quote freshness rules, attribution requirements, and rights to display or redistribute the data:
+The first provider adapter is Finnhub. Set `MARKET_DATA_PROVIDER=finnhub`; the Edge Function reads `FINNHUB_API_KEY` server-side and uses `FINNHUB_API_BASE_URL` when supplied, otherwise `https://finnhub.io/api/v1`. Never put the Finnhub key in Vite or Expo environment variables.
+
+Deploy after reviewing Finnhub's licensing, attribution, quote freshness, redistribution, and rate-limit terms. Finnhub plan limits and market-data entitlements can affect availability; a successful response is not a grant of redistribution rights:
 
 ```sh
 supabase functions deploy market-data
-supabase secrets set MARKET_DATA_PROVIDER_URL=https://provider.example/quotes MARKET_DATA_API_KEY=replace-me
+supabase secrets set MARKET_DATA_PROVIDER=finnhub FINNHUB_API_KEY=replace-me FINNHUB_API_BASE_URL=https://finnhub.io/api/v1
 ```
 
-Provider selection and an account are deliberately deferred. Do not put either secret in Vite or Expo environment variables. The function currently documents and isolates the expected upstream shape (`{ data: [{ symbol, price, asOf? }] }`); its adapter must be updated and reviewed for the selected provider before enabling live prices.
+The secret command uses a placeholder; replace `replace-me` with the real secret without committing it. The function requests one Finnhub `/quote` response per symbol, applies an eight-second timeout, maps invalid or zero quotes to `unavailable`, and preserves partial failures. Live prices are not wired into the dashboard.
 
 ## Educational insights boundary
 
