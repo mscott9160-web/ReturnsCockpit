@@ -20,7 +20,14 @@ This directory contains the initial database foundation for Returns Cockpit. The
 
    For local development, start the local stack with `supabase start`, then use `supabase db reset` to apply all migrations.
 
-5. Copy `.env.example` to `.env.local` and fill in the project URL and browser-safe anon key when client integration is added.
+5. Copy `.env.example` to `.env.local` and fill in the project URL and browser-safe anon key:
+
+   ```sh
+   VITE_SUPABASE_URL=https://your-project.supabase.co
+   VITE_SUPABASE_ANON_KEY=your-anon-key
+   ```
+
+   The Vite client foundation in `src/supabase.ts` is credential-optional. When either value is absent, `isSupabaseConfigured` is `false`, auth helpers return a clear configuration error, and the local demo mode remains active. These variables must contain only the publishable anon key, never a service-role key.
 
 ## Schema and RLS assumptions
 

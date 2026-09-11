@@ -19,7 +19,7 @@ The workspace includes Overview, Portfolio, Watchlist, and Activity navigation. 
 
 The repository now includes a credentials-free Supabase foundation in `supabase/`. Migration `0001_initial_schema.sql` defines profiles, workspaces, workspace membership, transactions, watchlists, and watchlist items with UUID keys, timestamps, indexes, conservative constraints, and workspace-scoped Row Level Security. The current Vite app is intentionally unchanged and continues to use localStorage.
 
-See [`supabase/README.md`](supabase/README.md) for Supabase CLI setup, migration commands, RLS assumptions, and secret-handling rules. Before a future client connection, copy [`.env.example`](.env.example) to a local environment file and provide only the Supabase project URL and anon key. Do not commit that local file or any service-role key.
+See [`supabase/README.md`](supabase/README.md) for Supabase CLI setup, migration commands, RLS assumptions, and secret-handling rules. The typed client foundation in `src/supabase.ts` and `src/auth.ts` reads `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY`; copy [`.env.example`](.env.example) to `.env.local` and provide only those browser-safe values when connecting a project. Missing values are supported: the client stays nullable, auth helpers return a clear configuration error, and the local demo mode remains active. Do not commit that local file or any service-role key.
 
 ## Development
 
