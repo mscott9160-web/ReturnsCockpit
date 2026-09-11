@@ -14,7 +14,7 @@ The workspace includes Overview, Portfolio, Watchlist, and Activity navigation. 
 
 ## Next milestones
 
-- Live market-data adapter with explicit freshness and source states
+- Live market-data adapter with explicit freshness and source states (`supabase/functions/market-data` is now the reviewed boundary; it is not wired into the dashboard)
 - Educational insights that explain portfolio behavior without presenting guaranteed recommendations
 - Authentication and account/workspace persistence
 - Optional brokerage integrations for users who choose to connect one
@@ -39,6 +39,35 @@ The remaining sections describe the Vite starter configuration used by the proje
 `src/marketData.ts` defines the provider-facing `PriceSnapshot` contract and the demo provider. Each snapshot includes a symbol, price, status (`demo`, `fresh`, `stale`, or `unavailable`), source attribution, and an `asOf` timestamp. Portfolio calculations accept either a numeric price map or a snapshot map, so valuation does not import UI data and a future provider can be substituted without changing transaction or return logic.
 
 The current provider is deliberately local and contains no API calls or credentials. A future live provider must protect API keys outside the browser, attribute the upstream source, preserve reliable timestamps, expose stale and outage states, respect rate limits, and confirm data licensing and redistribution rights before being enabled.
+
+### Live market-data boundary
+
+`src/liveMarketData.ts` is the typed client boundary for the live function. It validates and normalizes symbols, requires a configured Supabase client and authenticated user, and invokes only the `market-data` Edge Function. It never calls a market-data provider from the browser. Demo mode remains the only dashboard data source until this boundary is reviewed.
+
+The function returns this stable contract for every request:
+
+```ts
+type LiveMarketDataResponse = {
+  data: Array<{
+    symbol: string
+    price: number | null
+    status: 'fresh' | 'stale' | 'unavailable'
+    source: string
+    asOf: string | null
+    reason?: string
+  }>
+  error: string | null
+}
+```
+
+Deploy after selecting a provider and confirming its API terms, quote freshness rules, attribution requirements, and rights to display or redistribute the data:
+
+```sh
+supabase functions deploy market-data
+supabase secrets set MARKET_DATA_PROVIDER_URL=https://provider.example/quotes MARKET_DATA_API_KEY=replace-me
+```
+
+Provider selection and an account are deliberately deferred. Do not put either secret in Vite or Expo environment variables. The function currently documents and isolates the expected upstream shape (`{ data: [{ symbol, price, asOf? }] }`); its adapter must be updated and reviewed for the selected provider before enabling live prices.
 
 ## Educational insights boundary
 

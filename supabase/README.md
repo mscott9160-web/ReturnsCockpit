@@ -37,6 +37,28 @@ The next step is to connect authenticated app state to this module, replacing th
 
    The Vite client foundation in `src/supabase.ts` is credential-optional. When either value is absent, `isSupabaseConfigured` is `false`, auth helpers return a clear configuration error, and the local demo mode remains active. These variables must contain only the publishable anon key, never a service-role key.
 
+## Live market-data function
+
+`functions/market-data/index.ts` is the server-side provider boundary. It accepts `POST { "symbols": ["AAPL", "MSFT"] }`, handles CORS and `OPTIONS`, validates non-empty US-style tickers, and caps each request at 25 symbols. Provider credentials are read only from Supabase Edge Function secrets; they are never sent to the browser or Expo client.
+
+Deploy it only after selecting a provider and reviewing the provider's account, licensing, attribution, rate-limit, freshness, and redistribution requirements:
+
+```sh
+supabase functions deploy market-data
+supabase secrets set MARKET_DATA_PROVIDER_URL=https://provider.example/quotes MARKET_DATA_API_KEY=replace-me
+supabase secrets list
+```
+
+The required secrets are `MARKET_DATA_PROVIDER_URL` (the selected provider endpoint) and `MARKET_DATA_API_KEY` (the provider credential). Keep both in Supabase secrets and never commit them.
+
+The provider has not been selected yet, so the function does not claim compatibility with a specific vendor. Its small adapter documents the expected upstream shape as `{ data: [{ symbol, price, asOf? }] }` or an equivalent array. Update that adapter only after confirming the selected provider's response and terms.
+
+### Stable response contract
+
+Successful and partial responses use `{ data: PriceSnapshot[], error: string | null }`. Each `PriceSnapshot` contains `symbol`, `price` (`number` or `null`), `status` (`fresh`, `stale`, or `unavailable`), `source`, and `asOf` (`string` or `null`), with an optional `reason` for unavailable data. Configuration and input failures return `503` and `400`; upstream failures return `502`; timeouts return `504`. Partial upstream responses return `502` with unavailable entries preserved in `data`.
+
+The browser boundary in `src/liveMarketData.ts` requires Supabase configuration and an authenticated user before invoking the function. It does not call a provider directly. Live prices are not wired into the existing dashboard; local demo data remains unchanged.
+
 ## Schema and RLS assumptions
 
 - `profiles` is keyed to `auth.users`; profile rows are private to the signed-in user.
