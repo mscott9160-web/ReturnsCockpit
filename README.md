@@ -1,4 +1,26 @@
-# React + TypeScript + Vite
+# Returns Cockpit
+
+Returns Cockpit is a trustworthy portfolio-understanding tool. It records manual transactions and explains portfolio value and returns using clearly labeled demo/static prices. It does not execute trades or make guaranteed recommendations.
+
+## Current milestone
+
+Milestone 1 is complete: transactions persist in browser local storage, demo data is seeded only for a new workspace, transaction validation is visible and prevents overselling, and recent activity supports confirmed deletion. This milestone intentionally has no live market API, authentication, trading execution, or recommendation engine.
+
+## Next milestones
+
+- Live market-data adapter with explicit freshness and source states
+- Educational insights that explain portfolio behavior without presenting guaranteed recommendations
+- Authentication and account/workspace persistence
+- Optional brokerage integrations for users who choose to connect one
+
+## Development
+
+```sh
+npm install
+npm run dev
+```
+
+The remaining sections describe the Vite starter configuration used by the project.
 
 This template provides a minimal setup to get React working in Vite with HMR and some Oxlint rules.
 

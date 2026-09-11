@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { calculateHoldings, calculateReturns } from './portfolio.ts'
+import { calculateHoldings, calculateReturns, validateTransaction } from './portfolio.ts'
 import type { Transaction } from './portfolio.ts'
 
 const transaction = (overrides: Partial<Transaction>): Transaction => ({
@@ -51,4 +51,12 @@ test('includes dividends and fees exactly once', () => {
   assert.equal(result.dividends, 25)
     assert.ok(Math.abs(result.unrealized - 951.4) < 0.000001)
     assert.ok(Math.abs(result.totalReturn - 973.4) < 0.000001)
+})
+
+test('rejects unsupported tickers and overselling', () => {
+  const transactions = [transaction({ shares: 4, price: 100, amount: 400 })]
+  const errors = validateTransaction({ type: 'sell', symbol: 'AAPL', date: '2026-01-02', shares: 5, amount: 500, price: 100, fees: 0 }, transactions)
+
+  assert.match(errors.join(' '), /sell up to 4 shares/)
+  assert.deepEqual(validateTransaction({ type: 'buy', symbol: 'NOPE', date: '2026-01-02', shares: 1, amount: 100, price: 100, fees: 0 }), ['Use a supported ticker for a buy or sell.'])
 })
