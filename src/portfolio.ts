@@ -32,6 +32,47 @@ function priceFor(symbol: string, priceMap: PriceMap): number | null {
 
 export type TransactionDraft = Omit<Transaction, 'id'>
 
+export function serializeTransactions(transactions: Transaction[]): string {
+  return JSON.stringify({ version: 1, transactions }, null, 2)
+}
+
+export function parseTransactions(input: string): Transaction[] {
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(input)
+  } catch {
+    throw new Error('The selected file is not valid JSON.')
+  }
+
+  const records = Array.isArray(parsed) ? parsed : parsed && typeof parsed === 'object' && 'transactions' in parsed ? parsed.transactions : null
+  if (!Array.isArray(records) || records.length === 0) throw new Error('The file must contain a non-empty transactions array.')
+
+  const transactions: Transaction[] = []
+  for (const [index, record] of records.entries()) {
+    if (!record || typeof record !== 'object') throw new Error(`Transaction ${index + 1} must be an object.`)
+    const candidate = record as Record<string, unknown>
+    const transaction = {
+      id: candidate.id,
+      type: candidate.type,
+      symbol: candidate.symbol,
+      date: candidate.date,
+      shares: candidate.shares,
+      amount: candidate.amount,
+      price: candidate.price,
+      fees: candidate.fees,
+    }
+    if (typeof transaction.id !== 'number' || !Number.isInteger(transaction.id) || typeof transaction.type !== 'string' || typeof transaction.symbol !== 'string' || typeof transaction.date !== 'string' || ![transaction.shares, transaction.amount, transaction.price, transaction.fees].every((value) => typeof value === 'number' && Number.isFinite(value))) {
+      throw new Error(`Transaction ${index + 1} has an invalid schema.`)
+    }
+    const normalized = transaction as Transaction
+    const validationErrors = validateTransaction(normalized, transactions)
+    if (validationErrors.length) throw new Error(`Transaction ${index + 1}: ${validationErrors.join(' ')}`)
+    if (transactions.some((item) => item.id === normalized.id)) throw new Error(`Transaction ${index + 1} uses a duplicate id.`)
+    transactions.push(normalized)
+  }
+  return transactions
+}
+
 export function heldShares(transactions: Transaction[], symbol: string): number {
   return calculateHoldings(transactions).find((holding) => holding.symbol === symbol)?.shares ?? 0
 }

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { calculateHoldings, calculateReturns, validateTransaction } from './portfolio.ts'
+import { calculateHoldings, calculateReturns, parseTransactions, serializeTransactions, validateTransaction } from './portfolio.ts'
 import type { Transaction } from './portfolio.ts'
 import { getDemoPriceSnapshots } from './marketData.ts'
 import { buildInsights, calculateAllocation, findConcentrationObservations } from './insights.ts'
@@ -94,4 +94,14 @@ test('handles empty and zero-value portfolios safely', () => {
 test('returns contribution observations preserve each input value', () => {
   const insights = buildInsights([], { realized: 12, unrealized: -4, dividends: 3 })
   assert.deepEqual(insights.slice(-3).map((insight) => [insight.input, insight.value]), [['realized', 12], ['unrealized', -4], ['dividends', 3]])
+})
+
+test('serializes and parses a versioned transaction ledger', () => {
+  const transactions = [transaction({ shares: 2, price: 100, amount: 200 })]
+  assert.deepEqual(parseTransactions(serializeTransactions(transactions)), transactions)
+})
+
+test('rejects an invalid ledger without partially accepting it', () => {
+  assert.throws(() => parseTransactions(JSON.stringify({ version: 1, transactions: [transaction({ shares: 2, price: 100, amount: 200 }), { id: 2, type: 'buy' }] })), /invalid schema/)
+  assert.throws(() => parseTransactions(JSON.stringify({ version: 1, transactions: [] })), /non-empty transactions array/)
 })

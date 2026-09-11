@@ -6,6 +6,8 @@ Returns Cockpit is a trustworthy portfolio-understanding tool. It records manual
 
 Milestone 1 is complete: transactions persist in browser local storage, demo data is seeded only for a new workspace, transaction validation is visible and prevents overselling, and recent activity supports confirmed deletion. This milestone intentionally has no live market API, authentication, trading execution, or recommendation engine.
 
+The workspace includes Overview, Portfolio, Watchlist, and Activity navigation. Overview keeps the dashboard; Portfolio focuses on holdings, allocation, and educational insights; Activity is the full transaction ledger; and Watchlist contains clearly labeled local sample data. Transactions can be exported as versioned JSON and imported through a file picker. Imports are parsed and validated as a whole before replacing the locally persisted ledger, with visible errors for invalid files.
+
 ## Next milestones
 
 - Live market-data adapter with explicit freshness and source states
