@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import { calculateHoldings, calculateReturns, validateTransaction } from './portfolio.ts'
 import type { Transaction } from './portfolio.ts'
+import { getDemoPriceSnapshots } from './marketData.ts'
 
 const transaction = (overrides: Partial<Transaction>): Transaction => ({
   id: 1,
@@ -25,6 +26,19 @@ test('calculates average cost and unrealized return for multiple buys', () => {
   assert.equal(result[0].averageCost, 110)
     assert.ok(Math.abs(result[0].marketValue - 3912.8) < 0.000001)
     assert.ok(Math.abs(result[0].unrealized - 1712.8) < 0.000001)
+})
+
+test('demo snapshots are explicitly labeled with source and timestamp', () => {
+  const snapshots = getDemoPriceSnapshots('2026-09-11T12:00:00.000Z')
+  assert.equal(snapshots.AAPL.status, 'demo')
+  assert.equal(snapshots.AAPL.source, 'Returns Cockpit demo data')
+  assert.equal(snapshots.AAPL.asOf, '2026-09-11T12:00:00.000Z')
+})
+
+test('unknown prices have no market value and do not throw', () => {
+  const result = calculateReturns([transaction({ symbol: 'NOPE', shares: 2, price: 100, amount: 200 })], {})
+  assert.equal(result.holdings[0].marketValue, 0)
+  assert.equal(result.holdings[0].unrealized, -200)
 })
 
 test('calculates realized and unrealized return after a partial sale', () => {

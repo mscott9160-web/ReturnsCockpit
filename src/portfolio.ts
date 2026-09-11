@@ -11,6 +11,9 @@ export type Transaction = {
   fees: number
 }
 
+import { demoPrices } from './marketData.ts'
+import type { PriceSnapshotMap } from './marketData.ts'
+
 export type Holding = {
   symbol: string
   shares: number
@@ -19,14 +22,12 @@ export type Holding = {
   unrealized: number
 }
 
-export const prices: Record<string, number> = {
-  NVDA: 118.2,
-  AAPL: 195.64,
-  MSFT: 441.12,
-  AMZN: 202.18,
-  TSLA: 248.98,
-  GOOGL: 176.21,
-  V: 346.15,
+export const prices = demoPrices
+export type PriceMap = Record<string, number> | PriceSnapshotMap
+
+function priceFor(symbol: string, priceMap: PriceMap): number | null {
+  const value = priceMap[symbol]
+  return typeof value === 'number' ? value : value?.price ?? null
 }
 
 export type TransactionDraft = Omit<Transaction, 'id'>
@@ -48,7 +49,7 @@ export function validateTransaction(draft: TransactionDraft, existingTransaction
   return errors
 }
 
-export function calculateHoldings(transactions: Transaction[]): Holding[] {
+export function calculateHoldings(transactions: Transaction[], priceMap: PriceMap = prices): Holding[] {
   const values = new Map<string, { shares: number; cost: number }>()
 
   transactions.forEach((transaction) => {
@@ -69,7 +70,7 @@ export function calculateHoldings(transactions: Transaction[]): Holding[] {
   return [...values.entries()]
     .filter(([, value]) => value.shares > 0.000001)
     .map(([symbol, value]) => {
-      const marketValue = value.shares * (prices[symbol] ?? 0)
+      const marketValue = value.shares * (priceFor(symbol, priceMap) ?? 0)
       return {
         symbol,
         shares: value.shares,
@@ -80,8 +81,8 @@ export function calculateHoldings(transactions: Transaction[]): Holding[] {
     })
 }
 
-export function calculateReturns(transactions: Transaction[]) {
-  const holdings = calculateHoldings(transactions)
+export function calculateReturns(transactions: Transaction[], priceMap: PriceMap = prices) {
+  const holdings = calculateHoldings(transactions, priceMap)
   let realized = 0
   let dividends = 0
   let fees = 0
