@@ -69,7 +69,9 @@ supabase functions deploy market-data
 supabase secrets set MARKET_DATA_PROVIDER=finnhub FINNHUB_API_KEY=replace-me FINNHUB_API_BASE_URL=https://finnhub.io/api/v1
 ```
 
-The secret command uses a placeholder; replace `replace-me` with the real secret without committing it. The function requests one Finnhub `/quote` response per symbol, applies an eight-second timeout, maps invalid or zero quotes to `unavailable`, and preserves partial failures. Live prices are not wired into the dashboard.
+The secret command uses a placeholder; replace `replace-me` with the real secret without committing it. The function requests one Finnhub `/quote` response per symbol, applies an eight-second timeout, maps invalid or zero quotes to `unavailable`, and preserves partial failures.
+
+When `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` are configured and a user is signed in, the dashboard requests one snapshot for every held symbol and watchlist symbol through `fetchLiveMarketData`. Successful fresh or stale snapshots drive portfolio calculations and are labeled with source and as-of time; unavailable symbols retain their demo snapshot. A function or provider error preserves the last successful values, otherwise the dashboard visibly labels demo prices as the fallback. Quotes load on initial authenticated dashboard load and only refresh when the user presses Refresh quotes. Required server-side secrets are `MARKET_DATA_PROVIDER`, `FINNHUB_API_KEY`, and optionally `FINNHUB_API_BASE_URL`; the browser must never receive `FINNHUB_API_KEY`.
 
 ## Educational insights boundary
 

@@ -2,7 +2,8 @@ import { useEffect, useRef, useState } from 'react'
 import type { ChangeEvent, FormEvent } from 'react'
 import { calculateReturns, parseTransactions, serializeTransactions, validateTransaction } from './portfolio'
 import type { Transaction, TransactionType } from './portfolio'
-import { getDemoPriceSnapshots } from './marketData'
+import { getDemoPriceSnapshots, mergePriceSnapshots } from './marketData'
+import { fetchLiveMarketData } from './liveMarketData'
 import { buildInsights, calculateAllocation } from './insights'
 import { getCurrentSession, signInWithEmail, signOut, signUpWithEmail } from './auth'
 import { isSupabaseConfigured, supabase } from './supabase'
@@ -56,6 +57,10 @@ function App() {
   const [workspaceId, setWorkspaceId] = useState<string | null>(null)
   const [dataLoading, setDataLoading] = useState(false)
   const [dataError, setDataError] = useState('')
+  const [priceSnapshots, setPriceSnapshots] = useState(() => getDemoPriceSnapshots())
+  const [quotesLoading, setQuotesLoading] = useState(false)
+  const [quotesError, setQuotesError] = useState('')
+  const [quotesRetry, setQuotesRetry] = useState(0)
 
   useEffect(() => {
     if (!isSupabaseConfigured || !supabase) return
@@ -138,7 +143,26 @@ function App() {
     })
     return () => { active = false }
   }, [session])
-  const priceSnapshots = getDemoPriceSnapshots()
+  const quoteSymbols = [...new Set([...transactions.filter((transaction) => ['buy', 'sell'].includes(transaction.type)).map((transaction) => transaction.symbol), ...watchlist])]
+  const quoteSymbolKey = quoteSymbols.join(',')
+  useEffect(() => {
+    if (!isSupabaseConfigured || !session || !quoteSymbolKey) return
+    let active = true
+    fetchLiveMarketData(quoteSymbolKey.split(',')).then((response) => {
+      if (!active) return
+      if (response.data.length > 0) setPriceSnapshots((current) => mergePriceSnapshots(current, response.data))
+      if (response.error || response.data.some((snapshot) => snapshot.status === 'unavailable' || snapshot.price === null)) {
+        setQuotesError(response.error || 'Some live quotes were unavailable. Demo prices are being used for those symbols.')
+      }
+      if (response.data.length === 0 && response.error) setQuotesError(`Live prices unavailable. Demo prices are being used. ${response.error}`)
+      setQuotesLoading(false)
+    }).catch((error) => {
+      if (!active) return
+      setQuotesError(`Live prices unavailable. Demo prices are being used. ${error instanceof Error ? error.message : 'Unknown error.'}`)
+      setQuotesLoading(false)
+    })
+    return () => { active = false }
+  }, [session, quoteSymbolKey, quotesRetry])
   const summary = calculateReturns(transactions, priceSnapshots)
   const allocation = calculateAllocation(summary.holdings)
   const insights = buildInsights(summary.holdings, { realized: summary.realized, unrealized: summary.unrealized, dividends: summary.dividends })
@@ -215,7 +239,12 @@ function App() {
     if (result.error) setAuthError(result.error.message)
   }
 
-  const asOf = priceSnapshots.AAPL.asOf ? new Date(priceSnapshots.AAPL.asOf).toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short' }) : 'unknown'
+  const quoteValues = Object.values(priceSnapshots)
+  const liveQuotes = quoteValues.filter((snapshot) => snapshot.status === 'fresh' || snapshot.status === 'stale')
+  const hasDemoQuotes = quoteValues.some((snapshot) => snapshot.status === 'demo')
+  const sourceLabel = liveQuotes.length > 0 && !hasDemoQuotes ? `Live ${liveQuotes.some((snapshot) => snapshot.status === 'stale') ? 'stale' : 'snapshot'}` : liveQuotes.length > 0 ? 'Live snapshot + demo fallback' : 'Demo prices'
+  const asOf = liveQuotes.find((snapshot) => snapshot.asOf)?.asOf || priceSnapshots.AAPL.asOf
+  const asOfLabel = asOf ? new Date(asOf).toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short' }) : 'unknown'
 
   if (isSupabaseConfigured && authLoading) return <main className="auth-shell"><div className="auth-loading" role="status">Checking your session...</div></main>
   if (isSupabaseConfigured && !session) return <AuthScreen initialError={authError} />
@@ -230,9 +259,9 @@ function App() {
       </aside>
       <main className="main-content">
         <header className="topbar"><div className="mobile-brand">returns<span>/</span>cockpit</div><div className="breadcrumb">Workspace <span>/</span> {activeNav}</div><div className="top-actions"><span className="workspace-status">{isSupabaseConfigured ? 'Signed in workspace' : 'Local demo workspace'}</span>{session && <><span className="account-email">{session.user.email}</span><button className="secondary-button sign-out-button" type="button" onClick={handleSignOut}>Sign out</button></> }<button className="icon-button" aria-label="Notifications" type="button">!</button><button className="avatar avatar-small" aria-label="Open profile menu" type="button">JM</button></div></header>
-        {(authError || dataError) && <p className="auth-inline-error" role="alert">{authError || dataError}</p>}
+        {(authError || dataError || quotesError) && <p className="auth-inline-error" role="alert">{authError || dataError || quotesError}</p>}
         <div className={`page-content view-${activeNav.toLowerCase()}`}>
-          <section className="page-heading"><div><p className="eyebrow">{new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })} <span className="market-status">Demo prices - sample data</span></p><h1>Good morning, Jordan.</h1><p className="muted">Here is your portfolio at a glance.</p><p className="price-note">Prices are demo values from the local sample provider, as of {asOf}.</p></div><button ref={addTransactionButtonRef} className="primary-button" type="button" onClick={() => { setErrors([]); setIsModalOpen(true) }}><span aria-hidden="true">+</span> Add transaction</button></section>
+          <section className="page-heading"><div><p className="eyebrow">{new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })} <span className="market-status">{quotesLoading ? 'Loading quotes...' : sourceLabel}</span></p><h1>Good morning, Jordan.</h1><p className="muted">Here is your portfolio at a glance.</p><p className="price-note">{sourceLabel} as of {asOfLabel}. {quotesLoading && 'Updating live snapshots.'}</p>{session && <button className="secondary-button quote-retry" type="button" onClick={() => { setQuotesError(''); setQuotesLoading(true); setQuotesRetry((value) => value + 1) }} disabled={quotesLoading}>{quotesLoading ? 'Loading quotes...' : 'Refresh quotes'}</button>}</div><button ref={addTransactionButtonRef} className="primary-button" type="button" onClick={() => { setErrors([]); setIsModalOpen(true) }}><span aria-hidden="true">+</span> Add transaction</button></section>
           {activeNav === 'Overview' && <section className="metric-grid" aria-label="Portfolio summary"><article className="metric-card featured"><p>Portfolio value <span className="trend">+</span></p><strong>{money(summary.marketValue)}</strong><span className="metric-foot positive-text">{signedMoney(summary.totalReturn)} <small>total return</small></span></article><article className="metric-card"><p>Total return</p><strong className="teal-text">{signedMoney(summary.totalReturn)}</strong><span className="metric-foot">Realized + unrealized + dividends</span></article><article className="metric-card"><p>Unrealized P/L</p><strong>{signedMoney(summary.unrealized)}</strong><span className="metric-foot">Across open positions</span></article><article className="metric-card"><p>Realized P/L</p><strong>{signedMoney(summary.realized)}</strong><span className="metric-foot">Closed positions</span></article></section>}
           {activeNav === 'Overview' && <>
           <section className="panel insight-panel"><div className="panel-heading"><div><p className="eyebrow">EDUCATIONAL VIEW</p><h2>Portfolio insights</h2></div><span className="panel-note">Observations, not recommendations</span></div><div className="insight-grid">{insights.map((insight) => <article className={`insight-card ${insight.severity}`} key={`${insight.category}-${insight.title}`}><span className="insight-label">{insight.category}</span><strong>{insight.title}</strong><p>{insight.explanation}</p><small>{insight.input}: {insight.category === 'concentration' ? `${(insight.value * 100).toFixed(1)}%` : money(insight.value)}</small></article>)}</div><div className="allocation-list"><strong>Allocation by current market value</strong>{allocation.map((item) => <div className="allocation-row" key={item.symbol}><span><i style={{ background: colors[item.symbol] || '#7fc2ae' }} />{item.symbol}</span><span>{(item.percentage * 100).toFixed(1)}% - {money(item.marketValue)}</span></div>)}</div></section>

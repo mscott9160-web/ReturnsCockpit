@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import { calculateHoldings, calculateReturns, parseTransactions, serializeTransactions, validateTransaction } from './portfolio.ts'
 import type { Transaction } from './portfolio.ts'
-import { getDemoPriceSnapshots } from './marketData.ts'
+import { getDemoPriceSnapshots, mergePriceSnapshots } from './marketData.ts'
 import { buildInsights, calculateAllocation, findConcentrationObservations } from './insights.ts'
 
 const transaction = (overrides: Partial<Transaction>): Transaction => ({
@@ -34,6 +34,17 @@ test('demo snapshots are explicitly labeled with source and timestamp', () => {
   assert.equal(snapshots.AAPL.status, 'demo')
   assert.equal(snapshots.AAPL.source, 'Returns Cockpit demo data')
   assert.equal(snapshots.AAPL.asOf, '2026-09-11T12:00:00.000Z')
+})
+
+test('live snapshots replace demo prices while unavailable quotes keep demo values', () => {
+  const merged = mergePriceSnapshots(getDemoPriceSnapshots('2026-09-11T12:00:00.000Z'), [
+    { symbol: 'AAPL', price: 201, status: 'fresh', source: 'Finnhub', asOf: '2026-09-11T12:01:00.000Z' },
+    { symbol: 'MSFT', price: null, status: 'unavailable', source: 'Finnhub', asOf: null },
+  ])
+  assert.equal(merged.AAPL.price, 201)
+  assert.equal(merged.AAPL.status, 'fresh')
+  assert.equal(merged.MSFT.price, 441.12)
+  assert.equal(merged.MSFT.status, 'demo')
 })
 
 test('unknown prices have no market value and do not throw', () => {

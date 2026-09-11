@@ -29,3 +29,13 @@ export function getDemoPriceSnapshots(asOf = new Date().toISOString()): PriceSna
     asOf,
   }]))
 }
+
+export function mergePriceSnapshots(demoSnapshots: PriceSnapshotMap, liveSnapshots: PriceSnapshot[]): PriceSnapshotMap {
+  const merged = { ...demoSnapshots }
+  liveSnapshots.forEach((snapshot) => {
+    if ((snapshot.status === 'fresh' || snapshot.status === 'stale') && typeof snapshot.price === 'number' && Number.isFinite(snapshot.price)) {
+      merged[snapshot.symbol] = snapshot
+    }
+  })
+  return merged
+}
