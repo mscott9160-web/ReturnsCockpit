@@ -15,6 +15,12 @@ The workspace includes Overview, Portfolio, Watchlist, and Activity navigation. 
 - Authentication and account/workspace persistence
 - Optional brokerage integrations for users who choose to connect one
 
+## Supabase backend foundation
+
+The repository now includes a credentials-free Supabase foundation in `supabase/`. Migration `0001_initial_schema.sql` defines profiles, workspaces, workspace membership, transactions, watchlists, and watchlist items with UUID keys, timestamps, indexes, conservative constraints, and workspace-scoped Row Level Security. The current Vite app is intentionally unchanged and continues to use localStorage.
+
+See [`supabase/README.md`](supabase/README.md) for Supabase CLI setup, migration commands, RLS assumptions, and secret-handling rules. Before a future client connection, copy [`.env.example`](.env.example) to a local environment file and provide only the Supabase project URL and anon key. Do not commit that local file or any service-role key.
+
 ## Development
 
 ```sh
