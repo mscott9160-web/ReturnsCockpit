@@ -48,7 +48,9 @@ export function findConcentrationObservations(
       category: "concentration",
       severity: "watch",
       title: `${holding.symbol} is a concentrated position`,
-      explanation: `${holding.symbol} represents ${(holding.percentage * 100).toFixed(1)}% of current market value, above the ${(threshold * 100).toFixed(0)}% observation threshold.`,
+      explanation:
+        `${holding.symbol} represents ${(holding.percentage * 100).toFixed(1)}% ` +
+        `of current market value, above the ${(threshold * 100).toFixed(0)}% observation threshold.`,
       input: "Portfolio allocation",
       value: holding.percentage,
     }));
