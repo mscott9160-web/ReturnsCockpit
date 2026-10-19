@@ -1,4 +1,4 @@
-# Maya Chen Design Review
+# Agent-Generated Design Brief
 
 ## Product Direction
 
